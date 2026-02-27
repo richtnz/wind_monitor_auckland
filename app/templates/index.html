@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auckland Wind Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --green:    #3fb950;
+      --yellow:   #d29922;
+      --orange:   #f0883e;
+      --red:      #f85149;
+      --blue:     #58a6ff;
+      --purple:   #bc8cff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    header h1 { font-size: 1.4rem; font-weight: 600; }
+
+    .meta {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .refresh-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.35rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: background 0.15s;
+    }
+    .refresh-btn:hover { background: var(--border); }
+
+    /* ── current conditions ── */
+    .stations-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .station-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.4rem;
+    }
+
+    .station-card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--blue);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+    }
+
+    .metric {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+    }
+
+    .metric .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+
+    .metric .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .metric .unit {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-left: 0.15rem;
+    }
+
+    .metric.wind-speed .value { color: var(--green); }
+    .metric.wind-gust  .value { color: var(--orange); }
+
+    .wind-dir-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .arrow {
+      display: inline-block;
+      font-size: 1.4rem;
+      line-height: 1;
+      transition: transform 0.4s ease;
+    }
+
+    .fetched-at {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 0.9rem;
+      text-align: right;
+    }
+
+    /* ── charts ── */
+    .charts-section { display: flex; flex-direction: column; gap: 1.2rem; }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.4rem;
+    }
+
+    .chart-card h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .chart-wrap { position: relative; height: 240px; }
+
+    .timerange-btns {
+      display: flex;
+      gap: 0.4rem;
+      margin-bottom: 0.8rem;
+      flex-wrap: wrap;
+    }
+
+    .tr-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.25rem 0.65rem;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tr-btn.active, .tr-btn:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .legend {
+      display: flex;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+      margin-top: 0.6rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      display: inline-block;
+    }
+
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌬 Auckland Wind Monitor</h1>
+  <div class="meta">
+    <span><span class="status-dot"></span> Live · 30-min polling</span>
+    <span id="last-updated">—</span>
+    <button class="refresh-btn" onclick="fetchNow()">Refresh now</button>
+  </div>
+</header>
+
+<!-- Current Conditions -->
+<div class="stations-grid" id="stations-grid">
+  <!-- filled by JS -->
+</div>
+
+<!-- Charts -->
+<div class="charts-section">
+
+  <div class="chart-card">
+    <h3>Wind Speed &amp; Gust Trend</h3>
+    <div class="timerange-btns" id="tr-wind"></div>
+    <div class="chart-wrap"><canvas id="windChart"></canvas></div>
+    <div class="legend" id="wind-legend"></div>
+  </div>
+
+</div>
+
+<footer>
+  Data sourced from MetService NZ · Stations: Auckland Harbour Bridge (93106) · Bean Rock (NZBNW)
+</footer>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+
+const STATIONS = {
+  "93106": { name: "Auckland Harbour Bridge", windColor: "#58a6ff", gustColor: "#f0883e" },
+  "NZBNW": { name: "Bean Rock",               windColor: "#d29922", gustColor: "#f85149" },
+};
+
+const DIR_ARROWS = {
+  N:"↓", NNE:"↓", NE:"↙", ENE:"↙", E:"←", ESE:"↖", SE:"↖",
+  SSE:"↑", S:"↑", SSW:"↑", SW:"↗", WSW:"↗", W:"→", WNW:"↘",
+  NW:"↘", NNW:"↓",
+};
+
+const TIME_RANGES = [
+  { label: "6 h",  hours: 6  },
+  { label: "12 h", hours: 12 },
+  { label: "24 h", hours: 24 },
+  { label: "48 h", hours: 48 },
+];
+
+let currentHours = 24;
+let windChart;
+let allObs = {};   // station_id → observations[]
+
+// ── Chart defaults ────────────────────────────────────────────────────────
+
+Chart.defaults.color = "#8b949e";
+Chart.defaults.borderColor = "#30363d";
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+Chart.defaults.font.size = 11;
+
+function baseChartOpts(yLabel, extraAnnotations = []) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: "#21262d",
+        borderColor: "#30363d",
+        borderWidth: 1,
+        padding: 10,
+        titleColor: "#e6edf3",
+        bodyColor: "#8b949e",
+      },
+      annotation: { annotations: extraAnnotations },
+    },
+    scales: {
+      x: {
+        type: "time",
+        time: { tooltipFormat: "HH:mm dd-MMM", displayFormats: { hour: "HH:mm", day: "dd MMM" } },
+        grid: { color: "#21262d" },
+        adapters: { date: {} },
+      },
+      y: {
+        grid: { color: "#21262d" },
+        title: { display: true, text: yLabel, color: "#8b949e" },
+      },
+    },
+  };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString("en-NZ", { timeZone: "Pacific/Auckland", hour12: false,
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function windBg(speed) {
+  if (!speed) return "";
+  if (speed < 15) return "var(--green)";
+  if (speed < 30) return "var(--yellow)";
+  if (speed < 50) return "var(--orange)";
+  return "var(--red)";
+}
+
+// ── Render current conditions ─────────────────────────────────────────────
+
+function renderStations(latest) {
+  const grid = document.getElementById("stations-grid");
+  grid.innerHTML = "";
+
+  latest.forEach(obs => {
+    const cfg = STATIONS[obs.station_id] || {};
+    const arrow = DIR_ARROWS[obs.wind_dir] || "·";
+    const color = windBg(obs.wind_speed);
+
+    grid.innerHTML += `
+      <div class="station-card">
+        <h2>${cfg.name || obs.station_id}</h2>
+        <div class="metrics">
+          <div class="metric wind-speed">
+            <div class="label">Avg Wind</div>
+            <div class="value" style="color:${color}">${obs.wind_speed ?? "—"}<span class="unit">km/h</span></div>
+          </div>
+          <div class="metric wind-gust">
+            <div class="label">Gust</div>
+            <div class="value">${obs.wind_gust ?? "—"}<span class="unit">km/h</span></div>
+          </div>
+          <div class="metric">
+            <div class="label">Direction</div>
+            <div class="value wind-dir-badge">
+              <span>${obs.wind_dir ?? "—"}</span>
+              <span class="arrow">${arrow}</span>
+            </div>
+          </div>
+          <div class="metric">
+            <div class="label">Pressure</div>
+            <div class="value" style="font-size:1.2rem">${obs.pressure ?? "—"}<span class="unit">hPa</span></div>
+          </div>
+        </div>
+        <div class="fetched-at">Last obs: ${fmtTime(obs.fetched_at)}</div>
+      </div>`;
+  });
+}
+
+// ── Build chart datasets ──────────────────────────────────────────────────
+
+function buildWindDatasets() {
+  const datasets = [];
+  Object.entries(allObs).forEach(([sid, obs]) => {
+    const cfg = STATIONS[sid] || {};
+    const pts  = obs.map(o => ({ x: new Date(o.fetched_at), y: o.wind_speed }));
+    const gpts = obs.map(o => ({ x: new Date(o.fetched_at), y: o.wind_gust  }));
+    datasets.push({
+      label: `${cfg.name} – Avg`,
+      data: pts,
+      borderColor: cfg.windColor,
+      backgroundColor: cfg.windColor + "20",
+      borderWidth: 2,
+      pointRadius: 3,
+      fill: false,
+      tension: 0.3,
+    });
+    datasets.push({
+      label: `${cfg.name} – Gust`,
+      data: gpts,
+      borderColor: cfg.gustColor,
+      backgroundColor: cfg.gustColor + "15",
+      borderWidth: 1.5,
+      pointRadius: 2,
+      borderDash: [4, 3],
+      fill: false,
+      tension: 0.3,
+    });
+  });
+  return datasets;
+}
+
+// ── Init / update charts ──────────────────────────────────────────────────
+
+function initCharts() {
+  windChart = new Chart(document.getElementById("windChart"), {
+    type: "line",
+    data: { datasets: [] },
+    options: baseChartOpts("km/h"),
+  });
+}
+
+function updateCharts() {
+  windChart.data.datasets = buildWindDatasets();
+  windChart.update();
+  renderLegend("wind-legend", windChart.data.datasets);
+}
+
+function renderLegend(elId, datasets) {
+  const el = document.getElementById(elId);
+  el.innerHTML = datasets.map(ds => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${ds.borderColor}"></div>
+      <span>${ds.label}</span>
+    </div>`).join("");
+}
+
+// ── Time-range buttons ────────────────────────────────────────────────────
+
+function buildTrButtons(elId) {
+  const el = document.getElementById(elId);
+  el.innerHTML = TIME_RANGES.map(tr => `
+    <button class="tr-btn ${tr.hours === currentHours ? "active" : ""}"
+            onclick="setHours(${tr.hours}, this, '${elId}')">${tr.label}</button>
+  `).join("");
+}
+
+function setHours(h, btn, elId) {
+  currentHours = h;
+  document.querySelectorAll(`#${elId} .tr-btn`).forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  loadObs();
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────
+
+async function loadLatest() {
+  const data = await fetch("/api/latest").then(r => r.json());
+  renderStations(data);
+  document.getElementById("last-updated").textContent =
+    "Updated: " + new Date().toLocaleTimeString("en-NZ", { timeZone: "Pacific/Auckland", hour12: false });
+}
+
+async function loadObs() {
+  allObs = {};
+  await Promise.all(Object.keys(STATIONS).map(async sid => {
+    const data = await fetch(`/api/observations/${sid}?hours=${currentHours}`).then(r => r.json());
+    allObs[sid] = data;
+  }));
+  updateCharts();
+}
+
+async function fetchNow() {
+  const btn = document.querySelector(".refresh-btn");
+  btn.textContent = "Fetching…";
+  btn.disabled = true;
+  await fetch("/api/refresh", { method: "POST" });
+  await loadLatest();
+  await loadObs();
+  btn.textContent = "Refresh now";
+  btn.disabled = false;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+(async () => {
+  // Chart.js needs the date adapter for time scale
+  const script = document.createElement("script");
+  script.src = "https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js";
+  script.onload = async () => {
+    initCharts();
+    buildTrButtons("tr-wind");
+    await loadLatest();
+    await loadObs();
+
+    // Auto-refresh every 5 minutes to stay current
+    setInterval(async () => {
+      await loadLatest();
+      await loadObs();
+    }, 5 * 60 * 1000);
+  };
+  document.head.appendChild(script);
+})();
+</script>
+
+</body>
+</html>

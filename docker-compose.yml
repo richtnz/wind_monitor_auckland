@@ -1,0 +1,19 @@
+services:
+  wind-monitor:
+    build: .
+    container_name: wind-monitor
+    network_mode: host
+    volumes:
+      - wind-data:/data
+    environment:
+      - TZ=Pacific/Auckland
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  wind-data:
