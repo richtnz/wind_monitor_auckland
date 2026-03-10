@@ -8,7 +8,7 @@ BASE_URL = "https://www.metservice.com/publicData/webdata/module/weatherStationC
 
 STATIONS = {
     "93106": "Auckland Harbour Bridge",
-    "NZBNW": "Bean Rock",
+    "93133": "Mangere Bridge",
 }
 
 HEADERS = {
